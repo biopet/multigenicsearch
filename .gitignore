@@ -2,3 +2,4 @@
 target/
 test-output/
 sbt.log
+*.sc

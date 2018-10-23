@@ -25,5 +25,7 @@ import java.io.File
 
 case class Args(inputFile: File = null,
                 reference: File = null,
+                outputDir: File = null,
                 maxCombinationSize: Int = 4,
-                fraction: Double = 0.75)
+                multigenicFraction: Double = 0.75,
+                sampleFraction: Double = 0.95)

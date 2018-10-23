@@ -29,16 +29,18 @@ import nl.biopet.utils.tool.ToolCommand
 import org.apache.spark.SparkContext
 import org.apache.spark.rdd.RDD
 import org.apache.spark.sql.expressions.UserDefinedFunction
-import org.apache.spark.sql.{Dataset, SparkSession, types}
+import org.apache.spark.sql.{Dataset, SparkSession}
 import org.apache.spark.sql.functions._
 
 import scala.collection.JavaConversions._
+import scala.concurrent.{Await, Future}
+import scala.concurrent.ExecutionContext.Implicits.global
+import scala.concurrent.duration.Duration
 
 object MultigenicSearch extends ToolCommand[Args] {
   def emptyArgs = Args()
   def argsParser = new ArgsParser(this)
 
-  override def urlToolName: String = "tool-template"
   def main(args: Array[String]): Unit = {
     val cmdArgs = cmdArrayToArgs(args)
 
@@ -53,8 +55,10 @@ object MultigenicSearch extends ToolCommand[Args] {
     reader.close()
     val sampleNumber = header.getNGenotypeSamples
 
+    val scatter = BedRecordList.fromReference(cmdArgs.reference).scatter(1000000)
+
     val scatterRegions = sc.parallelize(
-      BedRecordList.fromReference(cmdArgs.reference).scatter(1000000))
+      scatter, scatter.size)
     val variants = readVcf(scatterRegions, cmdArgs.inputFile, sampleNumber)
 
     val indexOnly = variants
@@ -62,22 +66,37 @@ object MultigenicSearch extends ToolCommand[Args] {
       .withColumnRenamed("samples", "variantSamples")
       .as[SingleSamples]
 
-    val duoCombinations = initCombinations(indexOnly)
-    val triCombinations = addCombination(indexOnly, duoCombinations)
-    val quatCombinations = addCombination(indexOnly, triCombinations)
-    val fiveCombinations = addCombination(indexOnly, quatCombinations)
-    val sixCombinations = addCombination(indexOnly, fiveCombinations)
-    val sevenCombinations = addCombination(indexOnly, sixCombinations)
+    val maxMismatches: Map[Int, Int] = (2 to cmdArgs.maxCombinationSize)
+      .map(i => i -> (i - (i * cmdArgs.multigenicFraction).ceil.toInt)).toMap
+    val maxMismatch = maxMismatches.values.max
 
-    val bla2 = duoCombinations.collect()
-    val bla3 = triCombinations.collect()
-    val bla4 = quatCombinations.collect()
-    val bla5 = fiveCombinations.collect()
-    val bla6 = sixCombinations.collect()
-    val bla7 = sevenCombinations.collect()
+    val combinations = (3 to cmdArgs.maxCombinationSize)
+      .foldLeft(Map(2 -> filterMaxMismatches(initCombinations(indexOnly), maxMismatch, sampleNumber, cmdArgs.sampleFraction))) { (a,b) =>
+      val c = addCombination(indexOnly, a(b-1))
+      a + (b -> filterMaxMismatches(c, maxMismatch, sampleNumber, cmdArgs.sampleFraction))
+    }
+
+    val futures = (2 to cmdArgs.maxCombinationSize).map { i =>
+      writeResult(variants, combinations(i), maxMismatches(i), sampleNumber, cmdArgs.sampleFraction, new File(cmdArgs.outputDir, s"multigenic_$i"))
+    }
+
+    Await.result(Future.sequence(futures), Duration.Inf)
+
+    Thread.sleep(1000000)
 
     spark.stop()
     logger.info("Done")
+  }
+
+  def filterMaxMismatches(combinations: Dataset[Combination],
+                          maxMismatch: Int,
+                          sampleNumber: Int,
+                          sampleFraction: Double): Dataset[Combination] = {
+    combinations.filter { x =>
+      val mismatches = (0 until sampleNumber).map(s => x.samples.map(_(s)).count(_ == false))
+      val mismatchCount = mismatches.count(_ >= maxMismatch)
+      mismatchCount.toDouble / sampleNumber.toDouble >= sampleFraction
+    }
   }
 
   def readVcf(scatterRegions: RDD[List[BedRecord]],
@@ -138,13 +157,26 @@ object MultigenicSearch extends ToolCommand[Args] {
       (array: Seq[Seq[Boolean]], value: Seq[Boolean]) => array :+ value)
 
     current
-      .join(variants, sort_array($"indexes")(size($"indexes") - 1) < $"index")
+      .join(variants, $"indexes"(size($"indexes") - 1) < $"index")
       .withColumnRenamed("indexes", "indexes_old")
       .withColumnRenamed("samples", "samples_old")
       .withColumn("indexes", addIndex($"indexes_old", $"index"))
       .withColumn("samples", addSamples($"samples_old", $"variantSamples"))
       .select("indexes", "samples")
       .as[Combination]
+  }
+
+  def writeResult(variants: Dataset[SingleVariantWithIndex],
+                  combinations: Dataset[Combination],
+                  maxMismatches: Int,
+                  sampleNumber: Int,
+                  sampleFraction: Double,
+                  outputDir: File): Future[Unit] = {
+    val filterCombinations = filterMaxMismatches(combinations, maxMismatches, sampleNumber, sampleFraction)
+
+    Future {
+      filterCombinations.write.json(outputDir.getAbsolutePath)
+    }
   }
 
   def descriptionText: String =

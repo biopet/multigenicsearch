@@ -21,6 +21,8 @@
 
 package nl.biopet.tools.multigenicsearch
 
+import java.io.File
+
 import nl.biopet.utils.test.tools.ToolTest
 import org.testng.annotations.Test
 
@@ -38,10 +40,16 @@ class MultigenicSearchTest extends ToolTest[Args] {
 
   @Test
   def testDefault(): Unit = {
+    val tempDir = File.createTempFile("multigenic.", ".test")
+    tempDir.delete()
+    tempDir.deleteOnExit()
+
     MultigenicSearch.main(
       Array("-i",
             resourcePath("/wgsBoth.vcf.gz"),
             "-R",
-            resourcePath("/reference.fasta")))
+            resourcePath("/reference.fasta"),
+            "-o",
+            tempDir.getAbsolutePath, "--maxCombinationSize", "7"))
   }
 }
