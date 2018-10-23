@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2017 Biopet
+ * Copyright (c) 2018 Biopet
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy of
  * this software and associated documentation files (the "Software"), to deal in
@@ -38,6 +38,10 @@ class MultigenicSearchTest extends ToolTest[Args] {
 
   @Test
   def testDefault(): Unit = {
-    MultigenicSearch.main(Array("-i", resourcePath("/wgsBoth.vcf.gz"), "-R", resourcePath("/reference.fasta")))
+    MultigenicSearch.main(
+      Array("-i",
+            resourcePath("/wgsBoth.vcf.gz"),
+            "-R",
+            resourcePath("/reference.fasta")))
   }
 }

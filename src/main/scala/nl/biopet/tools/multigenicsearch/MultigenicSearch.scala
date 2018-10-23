@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2017 Biopet
+ * Copyright (c) 2018 Biopet
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy of
  * this software and associated documentation files (the "Software"), to deal in
@@ -28,6 +28,7 @@ import nl.biopet.utils.ngs.intervals.{BedRecord, BedRecordList}
 import nl.biopet.utils.tool.ToolCommand
 import org.apache.spark.SparkContext
 import org.apache.spark.rdd.RDD
+import org.apache.spark.sql.expressions.UserDefinedFunction
 import org.apache.spark.sql.{Dataset, SparkSession, types}
 import org.apache.spark.sql.functions._
 
@@ -52,69 +53,98 @@ object MultigenicSearch extends ToolCommand[Args] {
     reader.close()
     val sampleNumber = header.getNGenotypeSamples
 
-    val scatterRegions = sc.parallelize(BedRecordList.fromReference(cmdArgs.reference).scatter(1000000))
+    val scatterRegions = sc.parallelize(
+      BedRecordList.fromReference(cmdArgs.reference).scatter(1000000))
     val variants = readVcf(scatterRegions, cmdArgs.inputFile, sampleNumber)
 
-    val indexOnly = variants.select("index", "variant.samples").as[SingleSamples]
+    val indexOnly = variants
+      .select("index", "variant.samples")
+      .withColumnRenamed("samples", "variantSamples")
+      .as[SingleSamples]
 
     val duoCombinations = initCombinations(indexOnly)
     val triCombinations = addCombination(indexOnly, duoCombinations)
     val quatCombinations = addCombination(indexOnly, triCombinations)
     val fiveCombinations = addCombination(indexOnly, quatCombinations)
     val sixCombinations = addCombination(indexOnly, fiveCombinations)
+    val sevenCombinations = addCombination(indexOnly, sixCombinations)
 
-    val bla = duoCombinations.collect()
-    val bla2 = triCombinations.collect()
-    val bla3 = quatCombinations.collect()
-    val bla4 = fiveCombinations.collect()
-    val bla5 = sixCombinations.collect()
+    val bla2 = duoCombinations.collect()
+    val bla3 = triCombinations.collect()
+    val bla4 = quatCombinations.collect()
+    val bla5 = fiveCombinations.collect()
+    val bla6 = sixCombinations.collect()
+    val bla7 = sevenCombinations.collect()
 
     spark.stop()
     logger.info("Done")
   }
 
-  def readVcf(scatterRegions: RDD[List[BedRecord]], inputFile: File, sampleNumber: Int)(implicit spark: SparkSession): Dataset[SingleVariantWithIndex] = {
+  def readVcf(scatterRegions: RDD[List[BedRecord]],
+              inputFile: File,
+              sampleNumber: Int)(
+      implicit spark: SparkSession): Dataset[SingleVariantWithIndex] = {
     import spark.implicits._
-    scatterRegions.flatMap(x => x).mapPartitions { it =>
-      val reader = new VCFFileReader(inputFile, true)
+    scatterRegions
+      .flatMap(x => x)
+      .mapPartitions { it =>
+        val reader = new VCFFileReader(inputFile, true)
 
-      it.flatMap { region =>
-        reader.query(region.chr, region.start + 1, region.end)
-      }.map(r => SingleVariant(r.getContig, r.getStart, (0 until sampleNumber).map { g =>
-        val genotype = r.getGenotype(g)
-        genotype.getAlleles.exists(a => a.isNonReference && a.isCalled)
-      }.toList))
-    }.zipWithUniqueId().map { case (variant, idx) =>
-      SingleVariantWithIndex(idx, variant)
-    }.toDS()
+        it.flatMap(r => reader.query(r.chr, r.start + 1, r.end))
+          .map(r =>
+            SingleVariant(r.getContig, r.getStart, (0 until sampleNumber).map {
+              g =>
+                val genotype = r.getGenotype(g)
+                genotype.getAlleles.exists(a => a.isNonReference && a.isCalled)
+            }.toList))
+      }
+      .zipWithUniqueId()
+      .map {
+        case (variant, idx) =>
+          SingleVariantWithIndex(idx, variant)
+      }
+      .toDS()
   }
 
-  def initCombinations(variants: Dataset[SingleSamples])(implicit spark: SparkSession): Dataset[Combination] = {
+  def initCombinations(variants: Dataset[SingleSamples])(
+      implicit spark: SparkSession): Dataset[Combination] = {
     import spark.implicits._
 
     val singleSamples1 = variants
       .withColumnRenamed("index", "index1")
-      .withColumnRenamed("samples", "samples1")
+      .withColumnRenamed("variantSamples", "samples1")
       .as("singleSamples1")
     val singleSamples2 = variants
       .withColumnRenamed("index", "index2")
-      .withColumnRenamed("samples", "samples2")
+      .withColumnRenamed("variantSamples", "samples2")
       .as("singleSamples2")
 
-    singleSamples1.join(singleSamples2, $"index1" < $"index2")
+    singleSamples1
+      .join(singleSamples2, $"index1" < $"index2")
       .withColumn("indexes", array($"index1", $"index2"))
       .withColumn("samples", array($"samples1", $"samples2"))
       .select("indexes", "samples")
       .as[Combination]
   }
 
-  def addCombination(variants: Dataset[SingleSamples], current: Dataset[Combination])(implicit spark: SparkSession): Dataset[Combination] = {
+  def addCombination(variants: Dataset[SingleSamples],
+                     current: Dataset[Combination])(
+      implicit spark: SparkSession): Dataset[Combination] = {
     import spark.implicits._
 
-    current.joinWith(variants, sort_array($"indexes")(size($"indexes") - 1) < $"index")
-      .map { case (combination, variant) =>
-      combination.copy(indexes = combination.indexes :+ variant.index, combination.samples :+ variant.samples)
-    }
+    val addIndex: UserDefinedFunction = udf(
+      (array: Seq[Long], value: Long) => array :+ value)
+    val addSamples: UserDefinedFunction = udf(
+      (array: Seq[Seq[Boolean]], value: Seq[Boolean]) => array :+ value)
+
+    current
+      .join(variants, sort_array($"indexes")(size($"indexes") - 1) < $"index")
+      .withColumnRenamed("indexes", "indexes_old")
+      .withColumnRenamed("samples", "samples_old")
+      .withColumn("indexes", addIndex($"indexes_old", $"index"))
+      .withColumn("samples", addSamples($"samples_old", $"variantSamples"))
+      .select("indexes", "samples")
+      .as[Combination]
   }
 
   def descriptionText: String =

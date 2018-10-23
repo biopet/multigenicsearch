@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2017 Biopet
+ * Copyright (c) 2018 Biopet
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy of
  * this software and associated documentation files (the "Software"), to deal in
@@ -23,4 +23,7 @@ package nl.biopet.tools.multigenicsearch
 
 import java.io.File
 
-case class Args(inputFile: File = null, reference: File = null, maxCombinationSize: Int = 4, fraction: Double = 0.75)
+case class Args(inputFile: File = null,
+                reference: File = null,
+                maxCombinationSize: Int = 4,
+                fraction: Double = 0.75)
