@@ -59,9 +59,15 @@ object MultigenicSearch extends ToolCommand[Args] {
 
     val duoCombinations = initCombinations(indexOnly)
     val triCombinations = addCombination(indexOnly, duoCombinations)
+    val quatCombinations = addCombination(indexOnly, triCombinations)
+    val fiveCombinations = addCombination(indexOnly, quatCombinations)
+    val sixCombinations = addCombination(indexOnly, fiveCombinations)
 
     val bla = duoCombinations.collect()
     val bla2 = triCombinations.collect()
+    val bla3 = quatCombinations.collect()
+    val bla4 = fiveCombinations.collect()
+    val bla5 = sixCombinations.collect()
 
     spark.stop()
     logger.info("Done")
@@ -102,11 +108,13 @@ object MultigenicSearch extends ToolCommand[Args] {
       .as[Combination]
   }
 
-  //TODO: should become Dataset[Combination]
-  def addCombination(variants: Dataset[SingleSamples], current: Dataset[Combination])(implicit spark: SparkSession) = {
+  def addCombination(variants: Dataset[SingleSamples], current: Dataset[Combination])(implicit spark: SparkSession): Dataset[Combination] = {
     import spark.implicits._
 
-    current.join(variants, sort_array($"indexes")(size($"indexes") - 1) < $"index")
+    current.joinWith(variants, sort_array($"indexes")(size($"indexes") - 1) < $"index")
+      .map { case (combination, variant) =>
+      combination.copy(indexes = combination.indexes :+ variant.index, combination.samples :+ variant.samples)
+    }
   }
 
   def descriptionText: String =
