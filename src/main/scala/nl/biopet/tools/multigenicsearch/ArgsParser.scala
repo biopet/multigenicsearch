@@ -27,11 +27,18 @@ import nl.biopet.utils.tool.{AbstractOptParser, ToolCommand}
 
 class ArgsParser(toolCommand: ToolCommand[Args])
     extends AbstractOptParser[Args](toolCommand) {
-  opt[File]("inputFile")
-    .abbr("i")
-    .unbounded()
+  opt[File]('i', "inputFile")
     .required()
-    .maxOccurs(1)
     .action((x, c) => c.copy(inputFile = x))
-    .text("NonEmptyDescription")
+    .text("Input vcf file")
+  opt[File]('R', "reference")
+    .required()
+    .action((x, c) => c.copy(reference = x))
+    .text("Reference fasta, dict and fai should be next to this")
+  opt[Int]("maxCombinationSize")
+    .action((x, c) => c.copy(maxCombinationSize = x))
+    .text("Input vcf file")
+  opt[Double]("fraction")
+    .action((x, c) => c.copy(fraction = x))
+    .text("Input vcf file")
 }

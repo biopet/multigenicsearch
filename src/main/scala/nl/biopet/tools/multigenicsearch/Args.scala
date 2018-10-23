@@ -23,4 +23,4 @@ package nl.biopet.tools.multigenicsearch
 
 import java.io.File
 
-case class Args(inputFile: File = null)
+case class Args(inputFile: File = null, reference: File = null, maxCombinationSize: Int = 4, fraction: Double = 0.75)

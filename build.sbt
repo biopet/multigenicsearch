@@ -1,8 +1,7 @@
 organization := "com.github.biopet"
 organizationName := "Biopet"
 
-//TODO: Start year should reflect the tools original start year on github.com/biopet/biopet in the tools section
-startYear := Some(2017)
+startYear := Some(2018)
 
 name := "MultigenicSearch"
 biopetUrlName := "multigenicsearch"
@@ -12,20 +11,24 @@ biopetIsTool := true
 mainClass in assembly := Some(
   s"nl.biopet.tools.${name.value.toLowerCase()}.${name.value}")
 
-developers := List(
-  Developer(id = "ffinfo",
-            name = "Peter van 't Hof",
-            email = "pjrvanthof@gmail.com",
-            url = url("https://github.com/ffinfo")),
-  Developer(id = "rhpvorderman",
-            name = "Ruben Vorderman",
-            email = "r.h.p.vorderman@lumc.nl",
-            url = url("https://github.com/rhpvorderman"))
-)
+developers += Developer(id = "ffinfo",
+                        name = "Peter van 't Hof",
+                        email = "pjrvanthof@gmail.com",
+                        url = url("https://github.com/ffinfo"))
+
+fork in Test := true
 
 scalaVersion := "2.11.12"
 
-crossScalaVersions := Seq("2.11.12", "2.12.6")
+dependencyOverrides += "com.fasterxml.jackson.core" % "jackson-core" % "2.8.7"
+dependencyOverrides += "com.fasterxml.jackson.core" % "jackson-databind" % "2.8.7"
+dependencyOverrides += "com.fasterxml.jackson.module" % "jackson-module-scala_2.11" % "2.8.7"
 
+libraryDependencies += "com.github.biopet" %% "common-utils" % "0.8"
+libraryDependencies += "com.github.biopet" %% "spark-utils" % "0.3.1"
 libraryDependencies += "com.github.biopet" %% "tool-utils" % "0.6"
+libraryDependencies += "com.github.biopet" %% "ngs-utils" % "0.6"
 libraryDependencies += "com.github.biopet" %% "tool-test-utils" % "0.3"
+
+libraryDependencies += "org.apache.spark" %% "spark-core" % "2.2.1" % Provided
+libraryDependencies += "org.apache.spark" %% "spark-sql" % "2.2.1" % Provided

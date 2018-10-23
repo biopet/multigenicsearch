@@ -25,11 +25,19 @@ import nl.biopet.utils.test.tools.ToolTest
 import org.testng.annotations.Test
 
 class MultigenicSearchTest extends ToolTest[Args] {
+
+  System.setProperty("spark.master", "local[1]")
+
   def toolCommand: MultigenicSearch.type = MultigenicSearch
   @Test
   def testNoArgs(): Unit = {
     intercept[IllegalArgumentException] {
       MultigenicSearch.main(Array())
     }
+  }
+
+  @Test
+  def testDefault(): Unit = {
+    MultigenicSearch.main(Array("-i", resourcePath("/wgsBoth.vcf.gz"), "-R", resourcePath("/reference.fasta")))
   }
 }
