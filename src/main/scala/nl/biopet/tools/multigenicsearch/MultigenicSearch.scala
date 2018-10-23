@@ -70,10 +70,12 @@ object MultigenicSearch extends ToolCommand[Args] {
       .map(i => i -> (i - (i * cmdArgs.multigenicFraction).ceil.toInt)).toMap
     val maxMismatch = maxMismatches.values.max
 
+    val digenic = filterMaxMismatches(initCombinations(indexOnly), maxMismatch, sampleNumber, cmdArgs.sampleFraction)
+
     val combinations = (3 to cmdArgs.maxCombinationSize)
-      .foldLeft(Map(2 -> filterMaxMismatches(initCombinations(indexOnly), maxMismatch, sampleNumber, cmdArgs.sampleFraction))) { (a,b) =>
-      val c = addCombination(indexOnly, a(b-1))
-      a + (b -> filterMaxMismatches(c, maxMismatch, sampleNumber, cmdArgs.sampleFraction))
+      .foldLeft(Map(2 -> digenic)) { (a, multigenicSize) =>
+      val c = addCombination(indexOnly, a(multigenicSize - 1))
+      a + (multigenicSize -> filterMaxMismatches(c, maxMismatch, sampleNumber, cmdArgs.sampleFraction))
     }
 
     val futures = (2 to cmdArgs.maxCombinationSize).map { i =>
@@ -94,7 +96,7 @@ object MultigenicSearch extends ToolCommand[Args] {
                           sampleFraction: Double): Dataset[Combination] = {
     combinations.filter { x =>
       val mismatches = (0 until sampleNumber).map(s => x.samples.map(_(s)).count(_ == false))
-      val mismatchCount = mismatches.count(_ >= maxMismatch)
+      val mismatchCount = mismatches.count(_ <= maxMismatch)
       mismatchCount.toDouble / sampleNumber.toDouble >= sampleFraction
     }
   }

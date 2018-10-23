@@ -50,6 +50,6 @@ class MultigenicSearchTest extends ToolTest[Args] {
             "-R",
             resourcePath("/reference.fasta"),
             "-o",
-            tempDir.getAbsolutePath, "--maxCombinationSize", "7"))
+            tempDir.getAbsolutePath))
   }
 }
