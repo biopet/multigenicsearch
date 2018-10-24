@@ -29,4 +29,5 @@ case class Args(inputFile: File = null,
                 maxCombinationSize: Int = 4,
                 multigenicFraction: Double = 0.75,
                 sampleFraction: Double = 0.95,
-                binSize: Int = 1000000)
+                binSize: Int = 1000000,
+                regions: Option[File] = None)

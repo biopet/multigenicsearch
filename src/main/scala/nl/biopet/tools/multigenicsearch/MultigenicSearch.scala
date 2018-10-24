@@ -55,11 +55,15 @@ object MultigenicSearch extends ToolCommand[Args] {
     reader.close()
     val sampleNumber = header.getNGenotypeSamples
 
-    val scatter =
-      BedRecordList.fromReference(cmdArgs.reference).scatter(cmdArgs.binSize)
+    val regions = (cmdArgs.regions match {
+      case Some(i) =>
+        BedRecordList.fromFile(i).validateContigs(cmdArgs.reference)
+      case _ => BedRecordList.fromReference(cmdArgs.reference)
+    }).combineOverlap
+      .scatter(cmdArgs.binSize)
 
-    val scatterRegions = sc.parallelize(scatter, scatter.size)
-    val variants = readVcf(scatterRegions, cmdArgs.inputFile, sampleNumber)
+    val regionsRdd = sc.parallelize(regions, regions.size)
+    val variants = readVcf(regionsRdd, cmdArgs.inputFile, sampleNumber)
 
     val indexOnly = variants
       .select("index", "variant.samples")
