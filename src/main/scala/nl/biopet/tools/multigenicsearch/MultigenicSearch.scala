@@ -56,7 +56,7 @@ object MultigenicSearch extends ToolCommand[Args] {
     val sampleNumber = header.getNGenotypeSamples
 
     val scatter =
-      BedRecordList.fromReference(cmdArgs.reference).scatter(1000000)
+      BedRecordList.fromReference(cmdArgs.reference).scatter(cmdArgs.binSize)
 
     val scatterRegions = sc.parallelize(scatter, scatter.size)
     val variants = readVcf(scatterRegions, cmdArgs.inputFile, sampleNumber)
@@ -123,6 +123,14 @@ object MultigenicSearch extends ToolCommand[Args] {
     }
   }
 
+  /**
+    * This method will read a vcf file in partitions
+    * @param scatterRegions Regions to read
+    * @param inputFile Input vcf file
+    * @param sampleNumber Total number of samples
+    * @param spark implicit spark session
+    * @return Output dataset
+    */
   def readVcf(scatterRegions: RDD[List[BedRecord]],
               inputFile: File,
               sampleNumber: Int)(

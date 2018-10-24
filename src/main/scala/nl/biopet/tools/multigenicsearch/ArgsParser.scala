@@ -48,4 +48,7 @@ class ArgsParser(toolCommand: ToolCommand[Args])
   opt[Double]("sampleFraction")
     .action((x, c) => c.copy(sampleFraction = x))
     .text("Sample fraction")
+  opt[Int]("binSize")
+    .action((x, c) => c.copy(binSize = x))
+    .text(s"Size of each bin to read vcf file, less mean more partitions. Default: ${Args().binSize}")
 }
