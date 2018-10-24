@@ -55,10 +55,10 @@ object MultigenicSearch extends ToolCommand[Args] {
     reader.close()
     val sampleNumber = header.getNGenotypeSamples
 
-    val scatter = BedRecordList.fromReference(cmdArgs.reference).scatter(1000000)
+    val scatter =
+      BedRecordList.fromReference(cmdArgs.reference).scatter(1000000)
 
-    val scatterRegions = sc.parallelize(
-      scatter, scatter.size)
+    val scatterRegions = sc.parallelize(scatter, scatter.size)
     val variants = readVcf(scatterRegions, cmdArgs.inputFile, sampleNumber)
 
     val indexOnly = variants
@@ -67,35 +67,57 @@ object MultigenicSearch extends ToolCommand[Args] {
       .as[SingleSamples]
 
     val maxMismatches: Map[Int, Int] = (2 to cmdArgs.maxCombinationSize)
-      .map(i => i -> (i - (i * cmdArgs.multigenicFraction).ceil.toInt)).toMap
+      .map(i => i -> (i - (i * cmdArgs.multigenicFraction).ceil.toInt))
+      .toMap
     val maxMismatch = maxMismatches.values.max
 
-    val digenic = filterMaxMismatches(initCombinations(indexOnly), maxMismatch, sampleNumber, cmdArgs.sampleFraction)
+    val digenic = filterMaxMismatches(initCombinations(indexOnly),
+                                      maxMismatch,
+                                      sampleNumber,
+                                      cmdArgs.sampleFraction)
 
     val combinations = (3 to cmdArgs.maxCombinationSize)
       .foldLeft(Map(2 -> digenic)) { (a, multigenicSize) =>
-      val c = addCombination(indexOnly, a(multigenicSize - 1))
-      a + (multigenicSize -> filterMaxMismatches(c, maxMismatch, sampleNumber, cmdArgs.sampleFraction))
-    }
+        val c = addCombination(indexOnly, a(multigenicSize - 1))
+        a + (multigenicSize -> filterMaxMismatches(c,
+                                                   maxMismatch,
+                                                   sampleNumber,
+                                                   cmdArgs.sampleFraction))
+      }
 
     val futures = (2 to cmdArgs.maxCombinationSize).map { i =>
-      writeResult(variants, combinations(i), maxMismatches(i), sampleNumber, cmdArgs.sampleFraction, new File(cmdArgs.outputDir, s"multigenic_$i"))
+      writeResult(variants,
+                  combinations(i),
+                  maxMismatches(i),
+                  sampleNumber,
+                  cmdArgs.sampleFraction,
+                  new File(cmdArgs.outputDir, s"multigenic_$i"))
     }
 
     Await.result(Future.sequence(futures), Duration.Inf)
-
-    Thread.sleep(1000000)
 
     spark.stop()
     logger.info("Done")
   }
 
+  /**
+    * This method will filter combination has to much non-variants
+    * @param combinations Input dataset
+    * @param maxMismatch Max non-variants per sample
+    * @param sampleNumber Total number of samples
+    * @param sampleFraction Fraction of samples that should pass the test
+    * @return Filtered dataset
+    */
   def filterMaxMismatches(combinations: Dataset[Combination],
                           maxMismatch: Int,
                           sampleNumber: Int,
                           sampleFraction: Double): Dataset[Combination] = {
+    require(maxMismatch >= 0)
+    require(sampleNumber >= 1)
+    require(sampleFraction >= 0.0 && sampleFraction <= 1.0)
     combinations.filter { x =>
-      val mismatches = (0 until sampleNumber).map(s => x.samples.map(_(s)).count(_ == false))
+      val mismatches =
+        (0 until sampleNumber).map(s => x.samples.map(_(s)).count(_ == false))
       val mismatchCount = mismatches.count(_ <= maxMismatch)
       mismatchCount.toDouble / sampleNumber.toDouble >= sampleFraction
     }
@@ -105,6 +127,8 @@ object MultigenicSearch extends ToolCommand[Args] {
               inputFile: File,
               sampleNumber: Int)(
       implicit spark: SparkSession): Dataset[SingleVariantWithIndex] = {
+    require(sampleNumber >= 1)
+
     import spark.implicits._
     scatterRegions
       .flatMap(x => x)
@@ -127,6 +151,12 @@ object MultigenicSearch extends ToolCommand[Args] {
       .toDS()
   }
 
+  /**
+    * This method will make the first combinations
+    * @param variants Input dataset
+    * @param spark Implicit spark session
+    * @return Output dataset
+    */
   def initCombinations(variants: Dataset[SingleSamples])(
       implicit spark: SparkSession): Dataset[Combination] = {
     import spark.implicits._
@@ -148,6 +178,13 @@ object MultigenicSearch extends ToolCommand[Args] {
       .as[Combination]
   }
 
+  /**
+    *
+    * @param variants Variants to add
+    * @param current Current combinations
+    * @param spark Implicit spark session
+    * @return Output dataset
+    */
   def addCombination(variants: Dataset[SingleSamples],
                      current: Dataset[Combination])(
       implicit spark: SparkSession): Dataset[Combination] = {
@@ -159,7 +196,7 @@ object MultigenicSearch extends ToolCommand[Args] {
       (array: Seq[Seq[Boolean]], value: Seq[Boolean]) => array :+ value)
 
     current
-      .join(variants, $"indexes"(size($"indexes") - 1) < $"index")
+      .join(variants, $"indexes" (size($"indexes") - 1) < $"index")
       .withColumnRenamed("indexes", "indexes_old")
       .withColumnRenamed("samples", "samples_old")
       .withColumn("indexes", addIndex($"indexes_old", $"index"))
@@ -168,13 +205,26 @@ object MultigenicSearch extends ToolCommand[Args] {
       .as[Combination]
   }
 
+  /**
+    * Writing result as partitioned json file
+    * @param variants All variants
+    * @param combinations Combinations to write
+    * @param maxMismatches Max allowed non-variant calls per sample
+    * @param sampleNumber Tot number of samples
+    * @param sampleFraction Fraction of samples that should pass
+    * @param outputDir Output dir to write files, should not yet exist
+    * @return
+    */
   def writeResult(variants: Dataset[SingleVariantWithIndex],
                   combinations: Dataset[Combination],
                   maxMismatches: Int,
                   sampleNumber: Int,
                   sampleFraction: Double,
                   outputDir: File): Future[Unit] = {
-    val filterCombinations = filterMaxMismatches(combinations, maxMismatches, sampleNumber, sampleFraction)
+    val filterCombinations = filterMaxMismatches(combinations,
+                                                 maxMismatches,
+                                                 sampleNumber,
+                                                 sampleFraction)
 
     Future {
       filterCombinations.write.json(outputDir.getAbsolutePath)
@@ -183,7 +233,7 @@ object MultigenicSearch extends ToolCommand[Args] {
 
   def descriptionText: String =
     """
-      |
+      |This tool will try to find multigenic events.
     """.stripMargin
 
   def manualText: String =
@@ -192,7 +242,30 @@ object MultigenicSearch extends ToolCommand[Args] {
     """.stripMargin
 
   def exampleText: String =
-    """
+    s"""
+      |Default run:
+      |${example("-i",
+                 "<input vcf file>",
+                 "-o",
+                 "<output directory>",
+                 "-R",
+                 "<reference fasta>")}
+      |
+      |Run with more settings:
+      |${example(
+         "-i",
+         "<input vcf file>",
+         "-o",
+         "<output directory>",
+         "-R",
+         "<reference fasta>",
+         "--maxCombinationSize",
+         "5",
+         "--multigenicFraction",
+         "0.6",
+         "--sampleFraction",
+         "0.8"
+       )}
       |
     """.stripMargin
 }
