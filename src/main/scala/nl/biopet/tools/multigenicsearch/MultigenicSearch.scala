@@ -245,12 +245,15 @@ object MultigenicSearch extends ToolCommand[Args] {
 
   def descriptionText: String =
     """
-      |This tool will try to find multigenic events.
+      |This tool will try to find multigenic events with different sizes.
+      |It's not required for all samples to have all variants in a multigenic event.
     """.stripMargin
 
   def manualText: String =
     """
-      |
+      |The fractions are controled by multigenicFraction and sampleFraction.
+      |With maxCombinationSize you can set the maximum variants per multigenic event.
+      |With binsize the number of spark partitions can be controlled, the lower this number the more partitions will be created
     """.stripMargin
 
   def exampleText: String =

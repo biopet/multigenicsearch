@@ -1,7 +1,8 @@
 # MultigenicSearch
 
 
-This tool will try to find multigenic events.
+This tool will try to find multigenic events with different sizes.
+It's not required for all samples to have all variants in a multigenic event.
     
 
 # Documentation
