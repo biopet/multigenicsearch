@@ -3,6 +3,7 @@
 
 This tool will try to find multigenic events with different sizes.
 It's not required for all samples to have all variants in a multigenic event.
+A multigenic event is a set of (partially) co-occurring variants (partially) co-occurring in all samples.
     
 
 # Documentation

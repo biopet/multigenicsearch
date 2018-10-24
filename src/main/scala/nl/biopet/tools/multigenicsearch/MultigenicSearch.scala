@@ -122,7 +122,11 @@ object MultigenicSearch extends ToolCommand[Args] {
     require(sampleFraction >= 0.0 && sampleFraction <= 1.0)
     combinations.filter { combination =>
       val nonVariantsCounts =
-        (0 until sampleNumber).map(sampleIndex => combination.samples.map(_(sampleIndex)).count(isVariant => !isVariant))
+        (0 until sampleNumber).map(
+          sampleIndex =>
+            combination.samples
+              .map(_(sampleIndex))
+              .count(isVariant => !isVariant))
       val samplesPass: Int = nonVariantsCounts.count(_ <= maxNonVariants)
       samplesPass.toDouble / sampleNumber.toDouble >= sampleFraction
     }
@@ -148,13 +152,17 @@ object MultigenicSearch extends ToolCommand[Args] {
       .mapPartitions { it: Iterator[BedRecord] =>
         val reader = new VCFFileReader(inputFile, true)
 
-        it.flatMap(region => reader.query(region.chr, region.start + 1, region.end))
+        it.flatMap(region =>
+            reader.query(region.chr, region.start + 1, region.end))
           .map(vcfRecord =>
-            SingleVariant(vcfRecord.getContig, vcfRecord.getStart, (0 until sampleNumber).map {
-              sampleIndex =>
+            SingleVariant(
+              vcfRecord.getContig,
+              vcfRecord.getStart,
+              (0 until sampleNumber).map { sampleIndex =>
                 val genotype = vcfRecord.getGenotype(sampleIndex)
                 genotype.getAlleles.exists(a => a.isNonReference && a.isCalled)
-            }.toList))
+              }.toList
+          ))
       }
     val withIndex: RDD[SingleVariantWithIndex] = variants
       .zipWithUniqueId()
@@ -249,7 +257,6 @@ object MultigenicSearch extends ToolCommand[Args] {
   case class SingleVariantWithIndex(index: Long, variant: SingleVariant)
   case class SingleSamples(index: Long, variantSamples: List[Boolean])
   case class Combination(indexes: List[Long], samples: List[List[Boolean]])
-
 
   def descriptionText: String =
     """

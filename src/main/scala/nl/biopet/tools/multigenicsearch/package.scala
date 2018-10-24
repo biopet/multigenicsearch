@@ -21,5 +21,4 @@
 
 package nl.biopet.tools
 
-package object multigenicsearch {
-}
+package object multigenicsearch {}
