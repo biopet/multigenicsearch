@@ -70,29 +70,30 @@ object MultigenicSearch extends ToolCommand[Args] {
       .withColumnRenamed("samples", "variantSamples")
       .as[SingleSamples]
 
-    val maxMismatches: Map[Int, Int] = (2 to cmdArgs.maxCombinationSize)
-      .map(i => i -> (i - (i * cmdArgs.multigenicFraction).ceil.toInt))
-      .toMap
-    val maxMismatch = maxMismatches.values.max
+    val maxAllowedNonVariantSites: Map[Int, Int] =
+      (2 to cmdArgs.maxCombinationSize)
+        .map(i => i -> (i - (i * cmdArgs.multigenicFraction).ceil.toInt))
+        .toMap
+    val maxNonVariants = maxAllowedNonVariantSites.values.max
 
-    val digenic = filterMaxMismatches(initCombinations(indexOnly),
-                                      maxMismatch,
-                                      sampleNumber,
-                                      cmdArgs.sampleFraction)
+    val digenic = filterMaxNonVariants(initCombinations(indexOnly),
+                                       maxNonVariants,
+                                       sampleNumber,
+                                       cmdArgs.sampleFraction)
 
     val combinations = (3 to cmdArgs.maxCombinationSize)
       .foldLeft(Map(2 -> digenic)) { (a, multigenicSize) =>
         val c = addCombination(indexOnly, a(multigenicSize - 1))
-        a + (multigenicSize -> filterMaxMismatches(c,
-                                                   maxMismatch,
-                                                   sampleNumber,
-                                                   cmdArgs.sampleFraction))
+        a + (multigenicSize -> filterMaxNonVariants(c,
+                                                    maxNonVariants,
+                                                    sampleNumber,
+                                                    cmdArgs.sampleFraction))
       }
 
     val futures = (2 to cmdArgs.maxCombinationSize).map { i =>
       writeResult(variants,
                   combinations(i),
-                  maxMismatches(i),
+                  maxAllowedNonVariantSites(i),
                   sampleNumber,
                   cmdArgs.sampleFraction,
                   new File(cmdArgs.outputDir, s"multigenic_$i"))
@@ -107,23 +108,23 @@ object MultigenicSearch extends ToolCommand[Args] {
   /**
     * This method will filter combination has to much non-variants
     * @param combinations Input dataset
-    * @param maxMismatch Max non-variants per sample
+    * @param maxNonVariants Max non-variants per sample
     * @param sampleNumber Total number of samples
     * @param sampleFraction Fraction of samples that should pass the test
     * @return Filtered dataset
     */
-  def filterMaxMismatches(combinations: Dataset[Combination],
-                          maxMismatch: Int,
-                          sampleNumber: Int,
-                          sampleFraction: Double): Dataset[Combination] = {
-    require(maxMismatch >= 0)
+  def filterMaxNonVariants(combinations: Dataset[Combination],
+                           maxNonVariants: Int,
+                           sampleNumber: Int,
+                           sampleFraction: Double): Dataset[Combination] = {
+    require(maxNonVariants >= 0)
     require(sampleNumber >= 1)
     require(sampleFraction >= 0.0 && sampleFraction <= 1.0)
     combinations.filter { x =>
-      val mismatches =
+      val nonVariants =
         (0 until sampleNumber).map(s => x.samples.map(_(s)).count(_ == false))
-      val mismatchCount = mismatches.count(_ <= maxMismatch)
-      mismatchCount.toDouble / sampleNumber.toDouble >= sampleFraction
+      val nonVaraintsCount = nonVariants.count(_ <= maxNonVariants)
+      nonVaraintsCount.toDouble / sampleNumber.toDouble >= sampleFraction
     }
   }
 
@@ -221,7 +222,7 @@ object MultigenicSearch extends ToolCommand[Args] {
     * Writing result as partitioned json file
     * @param variants All variants
     * @param combinations Combinations to write
-    * @param maxMismatches Max allowed non-variant calls per sample
+    * @param maxNonVariants Max allowed non-variant calls per sample
     * @param sampleNumber Tot number of samples
     * @param sampleFraction Fraction of samples that should pass
     * @param outputDir Output dir to write files, should not yet exist
@@ -229,14 +230,14 @@ object MultigenicSearch extends ToolCommand[Args] {
     */
   def writeResult(variants: Dataset[SingleVariantWithIndex],
                   combinations: Dataset[Combination],
-                  maxMismatches: Int,
+                  maxNonVariants: Int,
                   sampleNumber: Int,
                   sampleFraction: Double,
                   outputDir: File): Future[Unit] = {
-    val filterCombinations = filterMaxMismatches(combinations,
-                                                 maxMismatches,
-                                                 sampleNumber,
-                                                 sampleFraction)
+    val filterCombinations = filterMaxNonVariants(combinations,
+                                                  maxNonVariants,
+                                                  sampleNumber,
+                                                  sampleFraction)
 
     Future {
       filterCombinations.write.json(outputDir.getAbsolutePath)
