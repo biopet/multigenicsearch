@@ -120,11 +120,11 @@ object MultigenicSearch extends ToolCommand[Args] {
     require(maxNonVariants >= 0)
     require(sampleNumber >= 1)
     require(sampleFraction >= 0.0 && sampleFraction <= 1.0)
-    combinations.filter { x =>
-      val nonVariants =
-        (0 until sampleNumber).map(s => x.samples.map(_(s)).count(_ == false))
-      val nonVaraintsCount = nonVariants.count(_ <= maxNonVariants)
-      nonVaraintsCount.toDouble / sampleNumber.toDouble >= sampleFraction
+    combinations.filter { combination =>
+      val nonVariantsCounts =
+        (0 until sampleNumber).map(sampleIndex => combination.samples.map(_(sampleIndex)).count(isVariant => !isVariant))
+      val samplesPass: Int = nonVariantsCounts.count(_ <= maxNonVariants)
+      samplesPass.toDouble / sampleNumber.toDouble >= sampleFraction
     }
   }
 
@@ -143,29 +143,30 @@ object MultigenicSearch extends ToolCommand[Args] {
     require(sampleNumber >= 1)
 
     import spark.implicits._
-    scatterRegions
+    val variants: RDD[SingleVariant] = scatterRegions
       .flatMap(x => x)
-      .mapPartitions { it =>
+      .mapPartitions { it: Iterator[BedRecord] =>
         val reader = new VCFFileReader(inputFile, true)
 
-        it.flatMap(r => reader.query(r.chr, r.start + 1, r.end))
-          .map(r =>
-            SingleVariant(r.getContig, r.getStart, (0 until sampleNumber).map {
-              g =>
-                val genotype = r.getGenotype(g)
+        it.flatMap(region => reader.query(region.chr, region.start + 1, region.end))
+          .map(vcfRecord =>
+            SingleVariant(vcfRecord.getContig, vcfRecord.getStart, (0 until sampleNumber).map {
+              sampleIndex =>
+                val genotype = vcfRecord.getGenotype(sampleIndex)
                 genotype.getAlleles.exists(a => a.isNonReference && a.isCalled)
             }.toList))
       }
+    val withIndex: RDD[SingleVariantWithIndex] = variants
       .zipWithUniqueId()
       .map {
         case (variant, idx) =>
           SingleVariantWithIndex(idx, variant)
       }
-      .toDS()
+    withIndex.toDS()
   }
 
   /**
-    * This method will make the first combinations
+    * This method will make the first digenic combinations
     * @param variants Input dataset
     * @param spark Implicit spark session
     * @return Output dataset
@@ -192,7 +193,7 @@ object MultigenicSearch extends ToolCommand[Args] {
   }
 
   /**
-    *
+    * This method will add a next level of combinations, so 2->3 or 4->5 ...
     * @param variants Variants to add
     * @param current Current combinations
     * @param spark Implicit spark session
@@ -244,15 +245,23 @@ object MultigenicSearch extends ToolCommand[Args] {
     }
   }
 
+  case class SingleVariant(contig: String, pos: Int, samples: List[Boolean])
+  case class SingleVariantWithIndex(index: Long, variant: SingleVariant)
+  case class SingleSamples(index: Long, variantSamples: List[Boolean])
+  case class Combination(indexes: List[Long], samples: List[List[Boolean]])
+
+
   def descriptionText: String =
     """
       |This tool will try to find multigenic events with different sizes.
       |It's not required for all samples to have all variants in a multigenic event.
+      |A multigenic event is a set of (partially) co-occurring variants (partially) co-occurring in all samples.
     """.stripMargin
 
   def manualText: String =
     """
-      |The fractions are controled by multigenicFraction and sampleFraction.
+      |The number of variants in a multigenic event that is allowed to not co-occur is determined by --multiGenicFraction.
+      |The number of samples in a multigenic event that is allowed to not co-occur is determined by --sampleFraction.
       |With maxCombinationSize you can set the maximum variants per multigenic event.
       |With binsize the number of spark partitions can be controlled, the lower this number the more partitions will be created
     """.stripMargin
@@ -282,6 +291,9 @@ object MultigenicSearch extends ToolCommand[Args] {
          "--sampleFraction",
          "0.8"
        )}
+      |In the above example, we find all multigenic events up to 5 co-occuring variants.
+      |With a multigenic fraction of 0.6, this means that at most 2 sites are allowed to not co-occur within the same sample.
+      |With a sample fraction of 0.8, this means at most 1 sample out of 5 samples is allowed to not have the event at all.
       |
     """.stripMargin
 }
