@@ -38,7 +38,7 @@ class MultigenicSearchTest extends ToolTest[Args] {
     }
   }
 
-  //@Test
+  @Test
   def testDefault(): Unit = {
     val tempDir = File.createTempFile("multigenic.", ".test")
     tempDir.delete()
